@@ -5,6 +5,7 @@ use App\Http\Services\WeatherApi\OpenWeatherMapApi;
 use App\Http\Services\WeatherApi\WeatherbitApi;
 use App\Models\Weather;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 
 class WeatherService
 {
@@ -27,7 +28,7 @@ class WeatherService
 
         $temperatures = array_filter($temperatures, function($value) { return !is_null($value); });
 
-        // ToDo: need to handle Exception in case, when both will API return null
+        // ToDo: throws Exception in case, both APIs return null
         return array_sum($temperatures) / count($temperatures);
     }
 
@@ -35,21 +36,22 @@ class WeatherService
     {
         $now = Carbon::now()->toDateString();
 
-        $row = $this->model->getWeather($country, $city, $now);
-        if ($row) {
-            return $row->temperature;
-        } else {
-            $temperature = $this->getWeatherFromApi($country, $city);
+        return Cache::remember("$country-$city-$now", 300, function () use ($country, $city, $now) {
+            $data = $this->model->getWeather($country, $city, $now);
+            if ($data) {
+                return $data->temperature;
+            } else {
+                $temperature = $this->getWeatherFromApi($country, $city);
 
-            Weather::create([
-                'country' => $country,
-                'city' => $city,
-                'date' => $now,
-                'temperature' => $temperature,
-            ]);
+                Weather::create([
+                    'country' => $country,
+                    'city' => $city,
+                    'date' => $now,
+                    'temperature' => $temperature,
+                ]);
 
-            return $temperature;
-
-        }
+                return $temperature;
+            }
+        });
     }
 }
